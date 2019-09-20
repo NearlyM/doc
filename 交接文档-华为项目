@@ -1,0 +1,361 @@
+# 华为摄像机项目交接文档
+
+华为摄像机项目主要包含：
+
+1. **华为智能摄像机**
+2. 荣耀智能摄像机
+
+以上两个项目框架、结构完全一致。
+
+简单介绍项目中几个和Danale区别的模块：
+
+1. 登录模块：
+
+   华为智能摄像机登录模块使用的是华为账号，登录到华为账号中心，获取openid以及用户的相关信息，再调用Danale的获取token接口，完成登录。
+
+2. 消息推送：
+
+   消息推送仅使用华为推送（与Danale推送不同），推送到达率一般。
+
+3. 华为账号中心返回app：
+
+   在使用了targetSDK28以后，通过accountmanager获取账号不仅需要动态权限，而且还需要系统强制性弹框，用户去选择对应的账号。
+
+   所有后来华为提供了判断设备是否登录的接口。但是app内部对于用户是否切换不清楚。
+
+   最终方案，返回app后，判断用户已经登录后，会再次调用华为登录接口，该接口会返回华为账号的openid，与旧的openid对比，不一致则认为切换了账号，这个时候会重新向Danale平台获取token，并获取数据，更新本地数据以及界面。
+
+4. 设备分享使用系统分享。
+
+
+
+项目结构：
+
+HW-Camara（main project）
+
+Android-DanaleSDK（sdk）
+
+DanaleRevolution-libs（lib）
+
+
+
+不同项目对应的分支如下：
+
+| 内容\项目             | 华为智能摄像机 | 荣耀智能摄像机 |
+| --------------------- | -------------- | -------------- |
+| HW-Camara             | develop        | hw-honor       |
+| Android-DanaleSDK     | hw-sdk         | hw-sdk         |
+| DanaleRevolution-libs | hw-lib         | hw-honor-lib   |
+
+目前两个项目的版本已经到达1.0.0.150。
+
+
+
+以荣耀智能摄像机为例：
+
+gradle版本号：5.1.1
+
+gradle插件版本号：3.2.1。
+
+
+
+settings.gradle：
+
+```
+include ':hwcamera'
+
+include ':libsdkplatform'
+project(':libsdkplatform').projectDir = new File('../Android-DanaleSDK/DanaleSDK/libsdkplatform')
+
+include ':libsdkdevice'
+project(':libsdkdevice').projectDir = new File('../Android-DanaleSDK/DanaleSDK/libsdkdevice')
+
+include ':libdecode'
+project(':libdecode').projectDir = new File('../DanaleRevolution-libs/libdecode')
+
+include ':libplayer'
+project(':libplayer').projectDir = new File('../DanaleRevolution-libs/libplayer')
+
+include ':danaleplayer'
+project(':danaleplayer').projectDir = new File('../DanaleRevolution-libs/danaleplayer')
+
+include ':libui'
+project(':libui').projectDir = new File('../DanaleRevolution-libs/libui')
+
+include ':DanaleCloud-lib-simplify'
+project(':DanaleCloud-lib-simplify').projectDir = new File('../DanaleRevolution-libs/DanaleCloud-lib-simplify')
+
+include ':libfirmwaveUpgrade-lib'
+project(':libfirmwaveUpgrade-lib').projectDir = new File('../DanaleRevolution-libs/libfirmwaveUpgrade-lib')
+
+include ':liblocalfile-ext'
+project(':liblocalfile-ext').projectDir = new File('../DanaleRevolution-libs/liblocalfile-hw-ext')
+
+//include ':libpush'
+//project(':libpush').projectDir = new File('../DanaleRevolution-libs/libpush')
+
+include ':hw-lib'
+project(':hw-lib').projectDir = new File('../DanaleRevolution-libs/hw-lib')
+```
+
+
+
+工程的gradle:
+
+```
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    repositories {
+        jcenter()
+        maven {
+            url 'https://maven.google.com/'
+            name 'Google'
+        }
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.2.1'
+        classpath 'com.neenbedankt.gradle.plugins:android-apt:1.8'
+        classpath 'com.jakewharton:butterknife-gradle-plugin:8.4.0'
+//        classpath 'com.antfortune.freeline:gradle:0.8.8'
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+        maven { url "https://jitpack.io" }
+        maven { url "https://dl.bintray.com/thelasterstar/maven/" }
+
+        maven {
+            url 'https://maven.google.com/'
+            name 'Google'
+        }
+//        maven { url 'http://developer.huawei.com/repo'}
+//        maven {url new File(rootProject.rootDir, 'HMS_SDK_2.6.1.300_AS').toURI().toURL()}
+        URL HMSMaven =new URL('http://developer.huawei.com/repo')
+        maven {url HMSMaven}
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+
+// Define versions in a single place
+ext {
+    // Sdk and tools
+    minSdkVersion = 18
+    targetSdkVersion = 28
+    compileSdkVersion = 26
+    buildToolsVersion = '27.0.1'
+
+    // App dependencies
+    supportLibraryVersion = '27.1.1'
+
+    // butterknife
+    butterknifeVersion = '8.8.1'
+}
+
+```
+
+
+
+主项目的gradle:
+
+```
+apply plugin: 'com.android.application'
+//apply plugin: 'com.mob.sdk'
+android {
+
+    compileSdkVersion 28
+    buildToolsVersion '27.0.2'
+    aaptOptions.cruncherEnabled = false
+//    aaptOptions.useNewCruncher = false
+    dexOptions {
+//        incremental true
+        javaMaxHeapSize "4g"
+    }
+
+    signingConfigs {
+//        DanaleRelease {
+//            storeFile file('huawei_smart_camera.jks')
+//            keyAlias 'HUAWEI Smart Camera'
+//            keyPassword 'huawei_smart_camera'
+//            storePassword 'huawei_smart_camera'
+//
+//        }
+//        Release {
+//            storeFile file('huawei_smart_camera.jks')
+//            keyAlias 'HUAWEI Smart Camera'
+//            keyPassword 'huawei_smart_camera'
+//            storePassword 'huawei_smart_camera'
+//        }
+
+
+        DanaleRelease {
+            storeFile file('huawei_honor_camera.jks')
+            keyAlias 'honor Smart Camera'
+            keyPassword 'honor_smart_camera'
+            storePassword 'honor_smart_camera'
+
+        }
+        Release {
+            storeFile file('huawei_honor_camera.jks')
+            keyAlias 'honor Smart Camera'
+            keyPassword 'honor_smart_camera'
+            storePassword 'honor_smart_camera'
+        }
+    }
+
+    defaultConfig {
+        minSdkVersion rootProject.ext.minSdkVersion
+        applicationId "com.huawei.ipc_honor"
+        targetSdkVersion rootProject.ext.targetSdkVersion
+
+        versionCode 20050
+        versionName "1.0.0.150"
+
+
+        multiDexEnabled true
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters "armeabi"
+        }
+
+        manifestPlaceholders = [HMSVERSION:"2.6.3",PACKAGE_NAME: "com.huawei.ipc_honor", APPID:"100398835"]
+    }
+
+    packagingOptions {
+//        exclude 'META-INF/maven/com.squareup.okio/okio/pom.xml'
+//        exclude 'META-INF/maven/com.squareup.okio/okio/pom.properties'
+//        exclude 'META-INF/maven/com.squareup.okhttp3/okhttp/pom.properties'
+//        exclude 'META-INF/maven/com.squareup.okhttp3/okhttp/pom.xml'
+        exclude 'build-data.properties'
+        exclude 'META-INF/rxjava.properties'
+    }
+
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.DanaleRelease
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.DanaleRelease
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            zipAlignEnabled true
+        }
+    }
+
+    sourceSets {
+        main {
+//            //jni.srcDirs = ['src/jni','src/jni/andfix','src/jni/bspatch', 'src/main/jni/']
+            jniLibs.srcDirs = ['src/libs', 'src/libs/armeabi', 'libs', 'libs/armeabi']
+//            assets.srcDirs = ['src/main/assets', 'src/main/assets/']
+        }
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+repositories {
+    flatDir {
+        dirs 'libs'
+        dirs 'aars'
+    }
+}
+dependencies {
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+    compile 'com.baoyz.pullrefreshlayout:library:1.2.0'
+//    compile 'com.tencent.bugly:crashreport:2.6.6.1'
+
+    //其中latest.release指代最新Bugly SDK版本号，也可以指定明确的版本号，例如2.1.9
+//    compile 'com.tencent.bugly:nativecrashreport:3.3.1'
+
+    //其中latest.release指代最新Bugly NDK版本号，也可以指定明确的版本号，例如3.0
+
+//        compile(name: 'DanaleCloud-lib-simplify-debug', ext: 'aar')
+//        compile(name: 'danaleplayer-debug', ext: 'aar')
+//        compile(name: 'libdecode-debug', ext: 'aar')
+//        compile(name: 'libfirmwaveUpgrade-lib-debug', ext: 'aar')
+//        compile(name: 'liblocalfile-ext-debug', ext: 'aar')
+//        compile(name: 'libplayer-debug', ext: 'aar')
+//        compile(name: 'libsdkdevice-debug', ext: 'aar')
+//        compile(name: 'libsdkplatform-debug', ext: 'aar')
+//        compile(name: 'libui-debug', ext: 'aar')
+//        compile(name: 'TimeSquare-lib-debug', ext: 'aar')
+//        compile(name: 'hw-lib-debug', ext: 'aar')
+
+
+    // 本地公共项目
+    compile project(':libsdkplatform')
+    compile project(':libsdkdevice')
+    compile project(':libplayer')
+    compile project(':danaleplayer')
+    compile project(':liblocalfile-ext')
+    compile project(':libui')
+    compile project(':hw-lib')
+
+    compile project(':DanaleCloud-lib-simplify')
+    compile project(':libfirmwaveUpgrade-lib')
+
+    compile 'com.android.support:multidex:1.0.1'
+    compile 'com.daimajia.swipelayout:library:1.2.0@aar'
+//    compile 'com.amulyakhare:com.amulyakhare.textdrawable:1.0.1'
+
+    // 支持库
+    compile "com.android.support:appcompat-v7:$rootProject.supportLibraryVersion"
+    compile "com.android.support:recyclerview-v7:$rootProject.supportLibraryVersion"
+    compile "com.android.support:support-v4:$rootProject.supportLibraryVersion"
+    compile "com.android.support:cardview-v7:$rootProject.supportLibraryVersion"
+    compile "com.android.support:design:$rootProject.supportLibraryVersion"
+
+    // ButterKnife
+    compile "com.jakewharton:butterknife:$rootProject.butterknifeVersion"
+    annotationProcessor "com.jakewharton:butterknife-compiler:$rootProject.butterknifeVersion"
+    compile 'com.tbruyelle.rxpermissions:rxpermissions:0.9.1@aar'
+
+    // 约束布局
+    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+    compile 'com.squareup.retrofit2:retrofit:2.3.0'
+    compile 'com.squareup.retrofit2:converter-gson:2.3.0'
+    compile 'com.squareup.retrofit2:adapter-rxjava:2.3.0'
+    compile 'io.reactivex:rxjava:1.3.0'
+    compile 'io.reactivex:rxandroid:1.1.0'
+    compile 'com.squareup.okhttp3:logging-interceptor:3.4.2'
+
+    compile 'com.squareup.okhttp3:okhttp:3.4.2'
+    compile 'com.github.bumptech.glide:glide:4.5.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.5.0'
+    compile 'com.google.android.gms:play-services-wallet:10.2.6'
+    compile 'com.google.android:flexbox:0.2.3'
+    implementation 'com.jakewharton.rxbinding2:rxbinding:2.1.1'
+
+    implementation 'cn.bingoogolapple:bga-qrcode-zbar:1.2.9'
+
+    String HMSSDKVer = '2.6.3.301'
+    compile 'com.huawei.android.hms:base:'+HMSSDKVer
+    compile 'com.huawei.android.hms:hwid:'+HMSSDKVer
+    compile 'com.huawei.android.hms:push:'+HMSSDKVer
+}
+
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        def requested = details.requested
+        if (requested.group == 'com.android.support') {
+            if (!requested.name.startsWith("multidex")) {
+                details.useVersion '27.1.1'
+            }
+        }
+    }
+}
+
+```
+
